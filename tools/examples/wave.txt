@@ -1,0 +1,14 @@
+# Wave channel 0 three times, then park and let go.
+# Upload:  python servoscript.py upload examples/wave.txt --run
+move 0 1500 500
+sync
+wave:
+move 0 1100 700       # 700 ms each way: gentle on current
+sync
+move 0 1900 700
+sync
+loop wave 3
+move 0 1500 500
+sync
+wait 300
+off all

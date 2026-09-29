@@ -1,0 +1,32 @@
+# local agent / editor settings
+.claude/
+.mcp.json
+
+# build output
+build/
+dist/
+__pycache__/
+*.pyc
+
+# backups
+*.bak
+*.bak[0-9]
+*-backup
+
+# KiCad local state, backups and generated files
+PCB/**/.history/
+PCB/**/.snapshots/
+PCB/**/.stale/
+PCB/**/production/
+*.kicad_prl
+fp-info-cache
+*.dsn
+*.ses
+*.net
+*.lck
+stale_labels.json
+
+# third-party binaries and vendor datasheets (download from WCH)
+embedded-ch32/tools/wchisp/
+CH32FV2x_V3xRM.PDF
+CH32V203C8T6.pdf
