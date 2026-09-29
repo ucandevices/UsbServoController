@@ -31,7 +31,9 @@ python tools/servoctl.py set 0 1500   # CLI
 cd embedded-ch32 && make flash        # build + flash over USB, ~3 s, no jumper
 ```
 
-Prebuilt GUI for Windows and Linux: `python tools/build_release.py` → `tools/dist/`.
+**Downloads:** firmware images and the prebuilt GUI for Windows and Linux are on the
+[Releases page](https://github.com/ucandevices/UsbServoController/releases/latest).
+To build the GUI yourself: `python tools/build_release.py` → `tools/dist/`.
 
 ---
 
