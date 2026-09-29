@@ -611,8 +611,32 @@ class ServoGui:
             self.port = where               # keep it for flash.py and reconnects
         self.set_state(f"connected: {where}  {version}", OK_GREEN)
         self.load_limits()
+        self.sync_travel(range(usc.CHANNELS))
         self.last_tick = time.monotonic()
         self.schedule()
+
+    def sync_travel(self, channels) -> None:
+        """
+        Give the board the GUI's travel limits, so Maestro-protocol clients,
+        scripts and standalone runs are clamped the same way. Saved to the
+        board's flash only when something changed. Firmware before 0.4 has no
+        'R' command; it is then skipped.
+        """
+        if not self.dev:
+            return
+        changed = False
+        try:
+            for ch in channels:
+                c = self.cfg.channels[ch]
+                if self.dev.travel(ch) != (c.min_us, c.max_us):
+                    self.dev.set_travel(ch, c.min_us, c.max_us)
+                    changed = True
+            if changed:
+                self.dev.save_settings()
+        except usc.DeviceError:
+            return                          # older firmware
+        except IO_ERRORS as exc:
+            self.lost(exc)
 
     def close_device(self) -> None:
         if self.after_id:
@@ -687,9 +711,9 @@ class ServoGui:
         mode = tk.StringVar(value=c.mode)
 
         rows = [("Name", ttk.Entry(body, textvariable=name, width=18), ""),
-                ("Min", ttk.Spinbox(body, from_=usc.US_MIN, to=usc.US_MAX, increment=10,
+                ("Min", ttk.Spinbox(body, from_=usc.US_ABS_MIN, to=usc.US_ABS_MAX, increment=10,
                                     width=8, textvariable=lo), "us"),
-                ("Max", ttk.Spinbox(body, from_=usc.US_MIN, to=usc.US_MAX, increment=10,
+                ("Max", ttk.Spinbox(body, from_=usc.US_ABS_MIN, to=usc.US_ABS_MAX, increment=10,
                                     width=8, textvariable=hi), "us"),
                 ("Speed", ttk.Spinbox(body, from_=0, to=SPEED_MAX, increment=100,
                                       width=8, textvariable=speed), "us/s, 0 = instant"),
@@ -712,12 +736,13 @@ class ServoGui:
             except ValueError:
                 err.config(text="min, max and speed must be whole numbers")
                 return
-            if not usc.US_MIN <= new.min_us < new.max_us <= usc.US_MAX:
-                err.config(text=f"need {usc.US_MIN} <= min < max <= {usc.US_MAX}")
+            if not usc.US_ABS_MIN <= new.min_us < new.max_us <= usc.US_ABS_MAX:
+                err.config(text=f"need {usc.US_ABS_MIN} <= min < max <= {usc.US_ABS_MAX}")
                 return
             self.cfg.channels[ch] = Config.valid_channel(ch, new)
             self.save_config()
             self.apply_channel_cfg(ch)
+            self.sync_travel([ch])
             win.destroy()
 
         btns = ttk.Frame(body)

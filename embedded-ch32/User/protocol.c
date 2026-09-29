@@ -14,6 +14,8 @@
 #include "hw_config.h"
 #include "bootflag.h"
 #include "script.h"
+#include "maestro.h"
+#include "settings.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -46,18 +48,22 @@ void Protocol_RxData(const uint8_t *data, uint32_t len)
     }
 }
 
-static void reply(const char *s)
+static void send_raw(const uint8_t *data, uint16_t len)
 {
-    uint16_t len = (uint16_t)strlen(s);
     uint32_t guard;
 
     for (guard = 0; guard < 100000u; guard++)
     {
-        if (USBD_ENDPx_DataUp(ENDP3, (uint8_t *)s, len) == USB_SUCCESS)
+        if (USBD_ENDPx_DataUp(ENDP3, (uint8_t *)data, len) == USB_SUCCESS)
         {
             return;
         }
     }
+}
+
+static void reply(const char *s)
+{
+    send_raw((const uint8_t *)s, (uint16_t)strlen(s));
 }
 
 static void reply_ok(void)           { reply("OK\r\n"); }
@@ -78,6 +84,16 @@ static void reply_fault(void)
              (unsigned long)Sense_LastCurrent_mA(),
              (unsigned long)Sense_LastVoltage_mV(),
              (unsigned)(Sense_RailPresent() ? 1u : 0u));
+    reply(b);
+}
+
+static void reply_travel(uint8_t ch)
+{
+    char b[32];
+    uint16_t lo, hi;
+
+    Servo_GetLimitsUs(ch, &lo, &hi);
+    snprintf(b, sizeof b, "OK %u %u\r\n", (unsigned)lo, (unsigned)hi);
     reply(b);
 }
 
@@ -134,7 +150,7 @@ static void execute(char *line)
     char verb;
     uint32_t a = 0, b = 0;
     uint32_t u32 = 0;
-    uint16_t v16 = 0;
+    uint16_t v16 = 0, lo = 0, hi = 0;
 
     while (*p == ' ' || *p == '\t') { p++; }
     if (*p == '\0') { return; }
@@ -157,11 +173,13 @@ static void execute(char *line)
         case 'S':
             if (!parse_u32(&p, &a) || !parse_u32(&p, &b)) { reply_err("syntax"); break; }
             if (a >= SERVO_CHANNELS)                      { reply_err("channel"); break; }
-            if (b < SERVO_US_MIN || b > SERVO_US_MAX)     { reply_err("range");   break; }
+            Servo_GetLimitsUs((uint8_t)a, &lo, &hi);
+            if (b < lo || b > hi)                         { reply_err("range");   break; }
             /* Servo_SetPulseUs() enables the channel, so 'S' is a second way to
                re-energise a servo and must honour the same interlock as 'E' --
                otherwise a latched fault stops nothing. */
             if (Sense_Faults() != 0u)                     { reply_err("fault");   break; }
+            Maestro_Cancel((uint8_t)a);
             Servo_SetPulseUs((uint8_t)a, (uint16_t)b);
             reply_ok();
             break;
@@ -178,6 +196,7 @@ static void execute(char *line)
             /* Refuse to re-energise anything while a rail fault is latched;
                clear it with 'C' once the cause is understood. */
             if (b != 0u && Sense_Faults() != 0u)          { reply_err("fault");   break; }
+            Maestro_Cancel((uint8_t)a);
             Servo_SetEnabled((uint8_t)a, b != 0u);
             reply_ok();
             break;
@@ -232,12 +251,34 @@ static void execute(char *line)
 
         case 'X':
             Script_Stop();
+            Maestro_CancelAll();
             Servo_DisableAll();
             reply_ok();
             break;
 
         case 'V':
             reply(PROTO_VERSION_STRING "\r\n");
+            break;
+
+        case 'R':   /* travel limits: R <ch> reads, R <ch> <min> <max> sets */
+            if (!parse_u32(&p, &a))  { reply_err("syntax");  break; }
+            if (a >= SERVO_CHANNELS) { reply_err("channel"); break; }
+            if (!parse_u32(&p, &b))  { reply_travel((uint8_t)a); break; }
+            if (!parse_u32(&p, &u32)) { reply_err("syntax"); break; }
+            if (b > 0xFFFFu || u32 > 0xFFFFu ||
+                !Servo_SetLimitsUs((uint8_t)a, (uint16_t)b, (uint16_t)u32))
+            {
+                reply_err("range");
+                break;
+            }
+            reply_ok();
+            break;
+
+        case 'W':   /* W saves settings to flash, W D restores factory defaults */
+            while (*p == ' ' || *p == '\t') { p++; }
+            if (*p == 'D' || *p == 'd') { if (Settings_Reset()) { reply_ok(); } else { reply_err("flash"); } }
+            else if (*p == '\0')        { if (Settings_Save())  { reply_ok(); } else { reply_err("flash"); } }
+            else                        { reply_err("syntax"); }
             break;
 
         case 'Q':   /* stored script: QC QA QS QI QG QR QX, see script.h */
@@ -260,6 +301,13 @@ void Protocol_Task(void)
     {
         uint8_t c = s_ring[s_tail];
         s_tail = (uint16_t)((s_tail + 1u) % RX_RING_SIZE);
+
+        /* Bytes of 0x80 and above start a Pololu Maestro command (maestro.h);
+           the parser keeps its data bytes too. Everything else is ASCII. */
+        if (Maestro_Feed(c, send_raw))
+        {
+            continue;
+        }
 
         if (c == '\r')
         {

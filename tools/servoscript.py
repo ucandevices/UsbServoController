@@ -124,7 +124,7 @@ def compile_script(text: str, cfg: Config | None = None) -> tuple[list, list]:
         us, c = int(tok), cfg.channels[ch]
         if c.mode != "servo":
             raise ScriptError(f"line {n}: {c.name} is set as an analog input in the GUI")
-        clamped = min(max(us, c.min_us, usc.US_MIN), c.max_us, usc.US_MAX)
+        clamped = min(max(us, c.min_us, usc.US_ABS_MIN), c.max_us, usc.US_ABS_MAX)
         if clamped != us:
             warnings.append(f"line {n}: {c.name} {us} clamped to {clamped}")
         return clamped

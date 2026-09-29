@@ -76,8 +76,8 @@ class Config:
 
     @staticmethod
     def valid_channel(ch: int, c: ChannelCfg) -> ChannelCfg:
-        c.min_us = min(max(c.min_us, usc.US_MIN), usc.US_MAX - SLIDER_STEP_US)
-        c.max_us = min(max(c.max_us, c.min_us + SLIDER_STEP_US), usc.US_MAX)
+        c.min_us = min(max(c.min_us, usc.US_ABS_MIN), usc.US_ABS_MAX - SLIDER_STEP_US)
+        c.max_us = min(max(c.max_us, c.min_us + SLIDER_STEP_US), usc.US_ABS_MAX)
         c.speed = min(max(c.speed, 0), SPEED_MAX)
         if c.mode != "input" or ch >= usc.ANALOG_CHANNELS:
             c.mode = "servo"

@@ -35,9 +35,11 @@ VERSION_PREFIX = "USBServoController"
 
 CHANNELS = 12              # servo.h SERVO_CHANNELS
 ANALOG_CHANNELS = 8        # channels 0..7 have an ADC path; 8..11 do not
-US_MIN = 500               # servo.h SERVO_US_MIN
+US_MIN = 500               # servo.h SERVO_US_MIN: default travel limits
 US_MAX = 2500              # servo.h SERVO_US_MAX
 US_NEUTRAL = 1500          # servo.h SERVO_US_NEUTRAL
+US_ABS_MIN = 64            # servo.h SERVO_US_ABS_MIN: how far limits can widen
+US_ABS_MAX = 4080          # servo.h SERVO_US_ABS_MAX
 
 RAW_CURRENT = 0            # sense.h SENSE_RAW_CURRENT
 RAW_VOLTAGE = 1            # sense.h SENSE_RAW_VOLTAGE
@@ -294,9 +296,35 @@ class ServoController:
         s_enabled unconditionally, so this is how a channel starts moving.
         """
         self._check_channel(channel)
-        if not US_MIN <= microseconds <= US_MAX:
-            raise ValueError(f"{microseconds} us outside {US_MIN}..{US_MAX}")
-        self._ok(f"S {channel} {microseconds}")
+        if not US_ABS_MIN <= microseconds <= US_ABS_MAX:
+            raise ValueError(f"{microseconds} us outside {US_ABS_MIN}..{US_ABS_MAX}")
+        self._ok(f"S {channel} {microseconds}")     # ERR range outside the travel limits
+
+    def travel(self, channel: int) -> tuple[int, int]:
+        """'R <ch>'. The channel's travel limits, (min_us, max_us)."""
+        self._check_channel(channel)
+        parts = self.command(f"R {channel}").split()
+        if len(parts) != 3 or parts[0] != "OK":
+            raise ProtocolError(f"malformed R reply: {parts!r}")
+        return int(parts[1]), int(parts[2])
+
+    def set_travel(self, channel: int, min_us: int, max_us: int) -> None:
+        """
+        'R <ch> <min> <max>'. Every S, script move and Maestro target on that
+        channel is clamped to these. In RAM until save_settings().
+        """
+        self._check_channel(channel)
+        if not US_ABS_MIN <= min_us < max_us <= US_ABS_MAX:
+            raise ValueError(f"need {US_ABS_MIN} <= min < max <= {US_ABS_MAX}")
+        self._ok(f"R {channel} {min_us} {max_us}")
+
+    def save_settings(self) -> None:
+        """'W'. Travel limits and Maestro speed/accel survive power-off."""
+        self._ok("W")
+
+    def reset_settings(self) -> None:
+        """'W D'. Factory defaults, in RAM and flash."""
+        self._ok("W D")
 
     def get_us(self, channel: int) -> int:
         """'G <ch>'. Returns 0 when the channel is disabled, not its last width."""
@@ -444,8 +472,8 @@ class ServoController:
               step: int = 10, delay: float = 0.02, cycles: int = 1) -> None:
         """Walk a channel back and forth. The first thing to run on a new servo."""
         self._check_channel(channel)
-        if not US_MIN <= low <= high <= US_MAX:
-            raise ValueError(f"need {US_MIN} <= low <= high <= {US_MAX}")
+        if not US_ABS_MIN <= low <= high <= US_ABS_MAX:
+            raise ValueError(f"need {US_ABS_MIN} <= low <= high <= {US_ABS_MAX}")
         for _ in range(cycles):
             path = list(range(low, high + 1, step)) + list(range(high, low - 1, -step))
             for us in path:
@@ -487,6 +515,7 @@ class MockDevice:
         self._out = bytearray()
         self._pulse = [US_NEUTRAL] * CHANNELS
         self._enabled = [False] * CHANNELS
+        self._travel = [(US_MIN, US_MAX)] * CHANNELS
         self._faults = 0
         self._limit_ma = DEFAULT_LIMIT_MA
         self._manual_mv = None  # None = AUTO mode, as at firmware power-up
@@ -582,7 +611,7 @@ class MockDevice:
             ch, us = nums[0], nums[1]
             if ch >= CHANNELS:
                 self._reply("ERR channel")
-            elif not US_MIN <= us <= US_MAX:
+            elif not self._travel[ch][0] <= us <= self._travel[ch][1]:
                 self._reply("ERR range")
             else:
                 # Matches the firmware: S enables the channel, and does NOT
@@ -621,7 +650,7 @@ class MockDevice:
             self._enabled = [False] * CHANNELS
             self._reply("OK")
         elif verb == "V":
-            self._reply("USBServoController 0.3 12ch CH32V203 isense (mock)")
+            self._reply("USBServoController 0.4 12ch CH32V203 isense maestro (mock)")
         elif verb == "I":
             self._reply(f"OK {self._current_ma()}")
         elif verb == "U":
@@ -654,6 +683,30 @@ class MockDevice:
             self._reply(f"OK {self._limit_ma} {self._limit_mv()} {auto}")
         elif verb == "Q":
             self._script_cmd(line[1:].strip())
+        elif verb == "R":
+            if not need(3 if len(args) >= 3 else 1):
+                return
+            ch = nums[0]
+            if ch >= CHANNELS:
+                self._reply("ERR channel")
+            elif len(nums) < 3:
+                self._reply(f"OK {self._travel[ch][0]} {self._travel[ch][1]}")
+            elif not US_ABS_MIN <= nums[1] < nums[2] <= US_ABS_MAX:
+                self._reply("ERR range")
+            else:
+                self._travel[ch] = (nums[1], nums[2])
+                if self._enabled[ch]:
+                    self._pulse[ch] = min(max(self._pulse[ch], nums[1]), nums[2])
+                self._reply("OK")
+        elif verb == "W":
+            rest = line[1:].strip().upper()
+            if rest == "D":
+                self._travel = [(US_MIN, US_MAX)] * CHANNELS
+                self._reply("OK")
+            elif rest == "":
+                self._reply("OK")          # the emulator has no flash to write
+            else:
+                self._reply("ERR syntax")
         else:
             self._reply("ERR unknown")
 

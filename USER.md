@@ -35,7 +35,7 @@ can shut every servo off on overcurrent or a flat battery.
 |---|---|
 | MCU | WCH CH32V203C8T6 (32-bit RISC-V, 96 MHz) |
 | Host interface | USB-C, appears as a serial (CDC) port — no driver on Windows 10+, Linux, macOS |
-| Servo outputs | 12 channels, 3.3 V logic pulses, 500–2500 µs, 50 Hz, 0.5 µs resolution |
+| Servo outputs | 12 channels, 3.3 V logic pulses, 50 Hz, 0.5 µs resolution; 500–2500 µs by default, settable per channel from 64 to 4080 µs |
 | Analog inputs | channels 0–7 only, **0–3.3 V** |
 | Servo supply | separate, via screw terminal J2 — see §1.4 for limits |
 | Rail monitoring | servo-rail current (0–13.2 A range) and voltage (0–13.2 V range) |
@@ -485,7 +485,7 @@ General form: `python servoctl.py [--port P] [--mock] [--timeout S] <command> �
 |---|---|
 | `ports` | list serial ports, mark candidates |
 | `info` | firmware version, every channel's state, rail status |
-| `set <ch> <µs>` | set a channel's pulse width, 500–2500. **Also switches the channel on.** |
+| `set <ch> <µs>` | set a channel's pulse width, within its travel limits (500–2500 by default). **Also switches the channel on.** |
 | `get <ch>` | read a channel's pulse width (`0` = off) |
 | `enable <ch>` / `disable <ch>` | switch a channel's output on / off, keeping its last width |
 | `center` | set **every** channel to 1500 µs — switches all 12 on |
@@ -592,6 +592,8 @@ with ServoController.open() as dev:          # or .open("COM5"), or .mock()
 | Method | Protocol | Returns |
 |---|---|---|
 | `version()` | `V` | str |
+| `travel(ch)` / `set_travel(ch, min, max)` | `R` | (min, max) / — |
+| `save_settings()` / `reset_settings()` | `W` / `W D` | — |
 | `set_us(ch, us)` | `S` | — |
 | `get_us(ch)` | `G` | int, 0 = off |
 | `enable(ch, on=True)` / `disable(ch)` | `E` | — |
@@ -622,11 +624,21 @@ proves your code, not the board.
 
 ### 3.7 Existing Maestro software
 
-Pololu's Maestro Control Center and `UscCmd` **cannot** talk to this board — they
-require Pololu's own USB vendor ID. Community libraries that speak the Maestro
-*serial* protocol (FRC4564/Maestro, ROS `maestro` drivers, etc.) will work
-**once the firmware implements that protocol** — it does not yet. Today, only the
-ASCII protocol in §4.3 is supported.
+From firmware **0.4** the board speaks the Maestro *serial* protocols (§4.3b),
+so community libraries work unchanged: point them at the board's COM port.
+Tested with [FRC4564/Maestro](https://github.com/FRC4564/Maestro):
+
+```python
+import maestro
+m = maestro.Controller("COM52")      # /dev/ttyACM0 on Linux
+m.setSpeed(0, 20)                    # 0.25 us per 10 ms units: 500 us/s
+m.setTarget(0, 8000)                 # quarter-microseconds: 2000 us
+```
+
+Pololu's Maestro Control Center and `UscCmd` **cannot** talk to this board —
+they require Pololu's own USB vendor ID. Use `servogui.py` instead. That
+library's `getMovingState()` always returns True on Python 3 (a bytes/str
+comparison bug in the library); `isMoving(ch)` works.
 
 ---
 
@@ -636,13 +648,13 @@ ASCII protocol in §4.3 is supported.
 
 | | |
 |---|---|
-| Version string | `USBServoController 0.3 12ch CH32V203 isense` |
+| Version string | `USBServoController 0.4 12ch CH32V203 isense maestro` |
 | Clock | 8 MHz crystal × 12 = 96 MHz; USB 48 MHz |
 | Servo frame | 20 ms (50 Hz), all channels |
-| Pulse range | 500–2500 µs, neutral 1500 |
-| Resolution | 0.5 µs |
+| Pulse range | per channel, 500–2500 µs by default, settable 64–4080 µs (`R`); neutral 1500 |
+| Resolution | 0.5 µs (Maestro targets use it; ASCII `S` takes whole µs) |
 | At power-up | **every channel off (output held low)** — nothing moves until commanded |
-| Settings storage | **none** — limits, zero-offset and positions are lost at power-off |
+| Settings storage | travel limits and Maestro start-up speed/acceleration, saved with `W` (survive power-off and firmware updates); protection limits, zero-offset and positions are not stored |
 | Rail monitoring | every ~10 ms, starting 250 ms after power-up |
 | Protection trip | 5 consecutive out-of-limit readings (~50 ms) → all channels off, fault latched |
 
@@ -662,7 +674,7 @@ ASCII protocol in §4.3 is supported.
 
 | Command | Reply | Meaning |
 |---|---|---|
-| `S <ch> <us>` | `OK` | set pulse width 500–2500 µs **and switch the channel on** |
+| `S <ch> <us>` | `OK` | set pulse width within the channel's travel limits **and switch the channel on** |
 | `G <ch>` | `OK <us>` | pulse width, `0` if the channel is off |
 | `E <ch> 1` | `OK` | switch channel on at its last width (1500 if never set) |
 | `E <ch> 0` | `OK` | switch channel off (output low, servo goes limp) |
@@ -698,6 +710,10 @@ ASCII protocol in §4.3 is supported.
 | Command | Reply | Meaning |
 |---|---|---|
 | `V` | version string | note: **no** `OK` prefix |
+| `R <ch>` | `OK <min> <max>` | the channel's travel limits, µs |
+| `R <ch> <min> <max>` | `OK` | set them, 64 ≤ min < max ≤ 4080. Every `S`, script move and Maestro target is clamped to them; a running channel outside is pulled inside at once. In RAM until `W` |
+| `W` | `OK` | save travel limits and Maestro speed/acceleration to flash, loaded at every power-up |
+| `W D` | `OK` | factory defaults (500–2500 µs, speed/accel 0) in RAM and flash |
 | `BOOT` | `OK BOOT` | reset into the board's USB bootloader; the port drops and returns as the bootloader (§4.7). |
 
 **Error reasons**
@@ -706,8 +722,9 @@ ASCII protocol in §4.3 is supported.
 |---|---|
 | `syntax` | missing or non-numeric argument |
 | `channel` | channel number above 11 |
-| `range` | pulse outside 500–2500 µs |
+| `range` | pulse outside the channel's travel limits, or `R` limits outside 64–4080 / min ≥ max |
 | `fault` | a rail fault is latched — `S` and `E … 1` are refused until `C` |
+| `flash` | `W` could not write or verify the settings page |
 | `noanalog` | `A` on channel 8–11 (no analog path) |
 | `index` | `N` with an index other than 0 or 1 |
 | `adc` | ADC conversion timed out |
@@ -718,7 +735,7 @@ Example session:
 
 ```
 > V
-USBServoController 0.3 12ch CH32V203 isense
+USBServoController 0.4 12ch CH32V203 isense maestro
 > L
 OK 5000 0 1            <- 6 V BEC detected: no undervoltage cutoff, auto mode
 > S 0 1500
@@ -728,6 +745,48 @@ OK 0 142 5980 1        <- no faults, 142 mA, 5.98 V, rail present
 > X
 OK
 ```
+
+### 4.3b Maestro serial protocols (firmware 0.4+)
+
+Any byte of `0x80` or above starts a Pololu Maestro command; printable ASCII
+goes to the text protocol above. Both can be used on the same port. Three
+framings, as on a Maestro:
+
+| Framing | Example: channel 0 to 1500 µs |
+|---|---|
+| Compact | `84 00 70 2E` |
+| Pololu, device number 12 | `AA 0C 04 00 70 2E` |
+| Mini SSC | `FF 00 7F` (0–254, 127 = 1500 µs, ±476 µs) |
+
+Targets are in **quarter-microseconds** (1500 µs = 6000) sent as two 7-bit
+bytes, low first. A target of `0` switches the channel off.
+
+| Compact | Command | Data | Reply |
+|---|---|---|---|
+| `84` | Set Target | ch, target | — |
+| `9F` | Set Multiple Targets | count, first ch, count × target | — |
+| `87` | Set Speed | ch, speed in 0.25 µs per 10 ms (0 = unlimited) | — |
+| `89` | Set Acceleration | ch, 0–255 in 0.25 µs per 10 ms per 80 ms (0 = unlimited) | — |
+| `90` | Get Position | ch | 2 bytes, quarter-µs, low first; 0 = off |
+| `93` | Get Moving State | — | 1 byte, 1 while any channel is ramping |
+| `A1` | Get Errors | — | 2 bytes, then cleared; `0x0010` = protocol error |
+| `A2` | Go Home | — | — (all channels off) |
+| `A4` | Stop Script | — | — (stops the board's stored script) |
+| `AE` | Get Script Status | — | 1 byte, 0 = running, 1 = stopped |
+
+`8A` Set PWM and `A7`/`A8` Restart Script are accepted and ignored.
+
+How it differs from a Maestro:
+
+- Targets clamp to each channel's **travel limits** (`R`, 500–2500 µs by
+  default), as a Maestro clamps to its channel min/max. Output is in 0.5 µs
+  steps; Get Position returns the exact target once a move has arrived.
+- Speed and acceleration set over the protocol last until power-off. To make
+  them the power-up values, send `W` afterwards (a Maestro keeps these in
+  Control Center settings).
+- An off channel jumps straight to its first target: its position is unknown.
+- A latched rail fault (§4.4) blocks Maestro targets like it blocks `S`.
+- An ASCII `S`, `E` or `X` on a channel ends any Maestro ramp on it.
 
 ### 4.4 Protection: overcurrent and undervoltage
 
@@ -840,7 +899,7 @@ flash, ~3 KB of 20 KB RAM).
 
 | To change | Edit |
 |---|---|
-| pulse range (500–2500 µs) | `SERVO_US_MIN` / `SERVO_US_MAX` in `servo.h` |
+| default travel limits (500–2500 µs) | `SERVO_US_MIN` / `SERVO_US_MAX` in `servo.h`; per channel at runtime with `R` |
 | frame rate / resolution | `SERVO_TIMER_HZ`, `SERVO_FRAME_TICKS` in `servo.h` (16-bit timer: ticks ≤ 65535) |
 | default protection limits | `SENSE_DEFAULT_LIMIT_MA` / `_MV` in `sense.h` |
 | trip speed | `SENSE_TRIP_COUNT`, `SENSE_TASK_PERIOD_MS` in `sense.c` |
@@ -862,10 +921,11 @@ python embedded-ch32/tools/verify_pinmap_ch32.py   # needs KiCad 10's kicad-cli
 
 ### 4.7 Flashing the firmware — over USB, no programmer
 
-Flash is split in three: a small **USB bootloader** in the first 12 KB, the
-**application** from `0x3000` (48 KB), and the **stored script** in the last
-4 KB from `0xF000` (`embedded-ch32/User/flash_layout.h`). A firmware update
-keeps the stored script — provided the bootloader on the board was built with
+Flash is split in four: a small **USB bootloader** in the first 12 KB, the
+**application** from `0x3000` (48 KB), the **stored script** (2 KB from
+`0xF000`) and the **settings** page (`0xF800`)
+(`embedded-ch32/User/flash_layout.h`). A firmware update keeps the stored
+script and the settings — provided the bootloader on the board was built with
 this layout (bootloaders from before the script engine erase up to `0xFFFF`;
 update it once with the JP2 + `wchisp` full image below). The
 bootloader runs on every reset and starts the application at once, unless the

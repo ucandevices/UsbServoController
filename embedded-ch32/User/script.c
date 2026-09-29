@@ -138,8 +138,10 @@ static bool instr_ok(const ScriptInstr_t *in)
         case SOP_JUMP:
             return true;
         case SOP_MOVE:
+            /* Any width a channel's limits could allow; the servo driver
+               clamps to the limits actually set when the move runs. */
             return in->ch < SERVO_CHANNELS &&
-                   in->a >= SERVO_US_MIN && in->a <= SERVO_US_MAX;
+                   in->a >= SERVO_US_ABS_MIN && in->a <= SERVO_US_ABS_MAX;
         case SOP_OFF:
             return in->ch < SERVO_CHANNELS || in->ch == SCRIPT_CH_ALL;
         case SOP_WAITIN:
@@ -473,7 +475,7 @@ static void commit(const char *p, char *out, uint32_t n)
     h->reserved1 = 0u;
     h->crc = crc32((const uint8_t *)s_stage.s.code, count * sizeof(ScriptInstr_t));
 
-    if (FLASH_ROM_ERASE(SCRIPT_FLASH_ADDR, SCRIPT_SIZE) != FLASH_COMPLETE ||
+    if (FLASH_ROM_ERASE(SCRIPT_FLASH_ADDR, SCRIPT_IMAGE_SIZE) != FLASH_COMPLETE ||
         FLASH_ROM_WRITE(SCRIPT_FLASH_ADDR, s_stage.words, SCRIPT_IMAGE_SIZE) != FLASH_COMPLETE)
     {
         snprintf(out, n, "ERR flash\r\n");

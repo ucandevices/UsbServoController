@@ -4,15 +4,21 @@
   * @brief   ASCII command protocol over the USB CDC port.
   *
   * Line-based, '\n' terminated, case-insensitive. One reply line per command.
-  * Chosen over the Maestro's binary protocol because it is debuggable from any
-  * terminal; a binary compatibility layer can be added alongside it later.
+  * Chosen as the primary protocol because it is debuggable from any terminal.
+  * The Pololu Maestro binary protocols run alongside it (maestro.h): bytes of
+  * 0x80 and above go there, so the two never collide.
   *
-  *   S <ch> <us>   set channel pulse width in microseconds (500..2500)
+  *   S <ch> <us>   set channel pulse width in microseconds, within the
+  *                 channel's travel limits (500..2500 by default)
   *   G <ch>        get channel pulse width; 0 means disabled
   *   E <ch> <0|1>  disable / enable a channel's output
   *   A <ch>        read channel as analog input (channels 0..7 only)
   *   X             disable all channels (panic stop)
   *   V             report firmware version and channel count
+  *   R <ch>        travel limits: "OK <min> <max>" in microseconds
+  *   R <ch> <min> <max>  set them, 64 <= min < max <= 4080 (servo.h)
+  *   W             save limits and Maestro speed/accel to flash (settings.h)
+  *   W D           restore factory defaults, in RAM and flash
   *   BOOT          reset into the WCH factory USB bootloader
   *
   * Servo-rail monitoring (see sense.h; no Maestro has any of this):
@@ -47,7 +53,7 @@ extern "C" {
 
 #include <stdint.h>
 
-#define PROTO_VERSION_STRING "USBServoController 0.3 12ch CH32V203 isense"
+#define PROTO_VERSION_STRING "USBServoController 0.4 12ch CH32V203 isense maestro"
 
 /**
   * @brief Feed bytes received on the CDC OUT endpoint into the parser.

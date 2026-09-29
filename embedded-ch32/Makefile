@@ -10,8 +10,8 @@
 #                   blank chip over the ROM bootloader (JP2 jumper + wchisp)
 #   make clean
 #   make size
-#   make hosttest   run sense.c's protection logic on the PC, against a stubbed
-#                   ADC (needs a host C compiler: HOSTCC=gcc, clang, "zig cc")
+#   make hosttest   run sense.c's protection logic and maestro.c's protocol and
+#                   ramps on the PC, against stubs (needs a host C compiler: HOSTCC=gcc, clang, "zig cc")
 #
 # Toolchain: xPack riscv-none-elf-gcc. Override with:
 #   make GCC_PATH=/path/to/riscv-none-elf/bin
@@ -117,10 +117,13 @@ clean:
 # process because sense.c keeps static state.
 HOSTCC ?= gcc
 HOSTTEST_SCENARIOS = 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 20 21 22 23 24
+MAESTRO_SCENARIOS = 1 2 3 4 5 6 7 8 9 10 11
 
 hosttest: | $(BUILD_DIR)
 	$(HOSTCC) -std=gnu11 -Wall -Wextra -O1 -Itest/stub -IUser User/sense.c test/test_sense.c -o $(BUILD_DIR)/test_sense.exe
 	@for s in $(HOSTTEST_SCENARIOS); do ./$(BUILD_DIR)/test_sense.exe $$s || { echo "scenario $$s FAILED"; exit 1; }; done
+	$(HOSTCC) -std=gnu11 -Wall -Wextra -O1 -Itest/stub -IUser User/maestro.c test/test_maestro.c -o $(BUILD_DIR)/test_maestro.exe
+	@for s in $(MAESTRO_SCENARIOS); do ./$(BUILD_DIR)/test_maestro.exe $$s || { echo "maestro scenario $$s FAILED"; exit 1; }; done
 	@echo "hosttest: all scenarios passed"
 
 .PHONY: all clean size hosttest bootloader full flash

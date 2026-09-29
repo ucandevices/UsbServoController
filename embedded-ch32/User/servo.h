@@ -35,19 +35,38 @@ extern "C" {
 #define SERVO_TICKS_PER_US  (SERVO_TIMER_HZ / 1000000u)   /* = 2 */
 #define SERVO_FRAME_TICKS   40000u
 
+/* Default per-channel travel limits -- safe for any hobby servo. */
 #define SERVO_US_MIN        500u
 #define SERVO_US_MAX        2500u
 #define SERVO_US_NEUTRAL    1500u
 
+/* How far the limits can be widened (ESCs, continuous-rotation servos, other
+   actuators), the same bounds a Pololu Maestro allows. */
+#define SERVO_US_ABS_MIN    64u
+#define SERVO_US_ABS_MAX    4080u
+
 void     Servo_Init(void);
+/* Every width is clamped to the channel's limits (Servo_SetLimitsUs). */
 bool     Servo_SetPulseUs(uint8_t ch, uint16_t us);
+/* Same, in timer ticks: 0.5 us each (SERVO_TICKS_PER_US per us). */
+bool     Servo_SetPulseTicks(uint8_t ch, uint16_t ticks);
 uint16_t Servo_GetPulseUs(uint8_t ch);
+/* Output width in ticks, 0 if the channel is off. */
+uint16_t Servo_GetPulseTicks(uint8_t ch);
 /* Last width commanded, even while the channel is off (1500 if never set):
    where an unpowered servo was most likely left. */
 uint16_t Servo_LastPulseUs(uint8_t ch);
 bool     Servo_SetEnabled(uint8_t ch, bool enabled);
+/* Travel limits, SERVO_US_ABS_MIN <= min < max <= SERVO_US_ABS_MAX. A running
+   channel outside the new limits is moved inside them at once. */
+bool     Servo_SetLimitsUs(uint8_t ch, uint16_t min_us, uint16_t max_us);
+void     Servo_GetLimitsUs(uint8_t ch, uint16_t *min_us, uint16_t *max_us);
 bool     Servo_IsEnabled(uint8_t ch);
 void     Servo_DisableAll(void);
+
+/* Milliseconds since power-up, counted off TIM2 (the servo timer). Call at
+   least once per 20 ms frame -- the main loop does, every ~1 ms. */
+uint32_t Servo_Millis(void);
 
 bool     Servo_HasAnalog(uint8_t ch);
 bool     Servo_ReadAnalog(uint8_t ch, uint16_t *value);

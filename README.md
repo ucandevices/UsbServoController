@@ -1,14 +1,15 @@
 # USB-C 12-Channel Servo Controller
 
-Open-source alternative to the [Pololu Mini Maestro 12](https://www.pololu.com/product/1352):
-USB-C, servo-rail current and voltage sensing, on-board scripts. Built for JLCPCB
+Open-source alternative to the [Pololu Mini Maestro 12](https://www.pololu.com/product/1352)
+that speaks the **Maestro serial protocols**, so Maestro libraries work unchanged —
+plus USB-C, servo-rail current and voltage sensing, on-board scripts. Built for JLCPCB
 turnkey assembly, **≈ $4.43 per board at 100 units** against $29.95 for the Maestro.
 
 | | |
 |---|---|
 | MCU | WCH **CH32V203C8T6**, RISC-V 96 MHz, LQFP-48 |
-| Channels | 12 hardware PWM, 500–2500 µs, 50 Hz, 0.5 µs; analog input on 0–7 |
-| Host interface | USB-C, CDC serial (no driver), ASCII protocol |
+| Channels | 12 hardware PWM, 50 Hz, 0.5 µs; travel limits per channel (64–4080 µs, 500–2500 default); analog input on 0–7 |
+| Host interface | USB-C, CDC serial (no driver); ASCII protocol and the Pololu Maestro Compact / Pololu / Mini SSC protocols |
 | Servo power | separate rail on a 5.08 mm screw terminal, 5–13.2 V full function, ~5 A total |
 | Sensing | rail current (5 mΩ + INA180A2) and voltage (÷4), overcurrent / LiPo undervoltage cut-off |
 | PCB | 66 × 38 mm, 2 layers, all parts top side, 4 × M3 |
@@ -191,20 +192,21 @@ What drives cost:
 ## 5. Firmware (`embedded-ch32/`)
 
 RISC-V, WCH `ch32v20x` HAL and USB device library, xPack `riscv-none-elf-gcc`
-15.2 (`make GCC_PATH=...` to override). Version `USBServoController 0.3`.
+15.2 (`make GCC_PATH=...` to override). Version `USBServoController 0.4`.
 
 | Flash region | Address | Size | Contents |
 |---|---|---|---|
 | Bootloader | 0x0000 | 12 KB | own USB CDC bootloader (`bootloader/`) |
 | Application | 0x3000 | 48 KB | servo firmware |
-| Script | 0xF000 | 4 KB | stored board script |
+| Script | 0xF000 | 2 KB | stored board script |
+| Settings | 0xF800 | 256 B used | travel limits, Maestro speed/accel (`User/settings.c`, `W`) |
 
 Layout lives in `User/flash_layout.h` and both `Link.ld` files.
 
 ```sh
 make                 # build/USBServoController-ch32.{elf,hex,bin}
 make flash           # BOOT command -> bootloader -> write, CRC-32 check, restart (~3 s)
-make hosttest        # sense.c protection logic on the PC, 21 supply scenarios
+make hosttest        # on the PC: sense.c protection (21 supply scenarios), maestro.c protocol, ramps and limits (11)
 python tools/verify_pinmap_ch32.py   # schematic <-> pin table <-> firmware
 ```
 
@@ -219,6 +221,11 @@ which is why the board has its own.
 **Protocol:** one ASCII command per line, one `OK` / `OK <value>` / `ERR <reason>`
 reply. Servo (`S G E X A`), rail sensing (`I U F L P C Z N`), stored script
 (`QC QA QS QI QG QR QX`), system (`V BOOT`). Full reference: USER.md §4.3.
+
+**Maestro protocols** (`User/maestro.c`): bytes of `0x80` and above are Pololu
+Maestro commands — Compact, Pololu (device 12) and Mini SSC framings, with
+on-board speed and acceleration ramps in the Maestro's units. Both protocols
+share the port. Reference: USER.md §4.3b.
 
 **Script engine** (`User/script.c`): up to 254 instructions — move with ramp
 time, wait, sync, loop, jump, analog wait/branch — compiled from text by
@@ -251,12 +258,12 @@ Modified vendor files: `usb_endp.c` (OUT endpoint → parser), `usb_prop.c`
 | 12 analog inputs | 8 | respin (pin limit) |
 | 5 V signals, 5 V user pin | 3.3 V, no 5 V rail | respin |
 | TTL serial, daisy-chain, `ERR` pin, 3 LEDs | USB only, 1 LED | respin |
-| Pololu / Compact / Mini SSC protocols | ASCII only | **firmware — highest value** |
-| 64–4080 µs, 1–333 Hz | 500–2500 µs, 50 Hz | firmware |
+| Pololu / Compact / Mini SSC protocols | **supported** (0.4): set target(s), speed, acceleration, get position / moving state / errors, go home | parity |
+| per-channel min/max 64–4080 µs, 1–333 Hz | **per-channel limits 64–4080 µs**, saved with `W`; fixed 50 Hz | rate: firmware |
 | 0.25 µs resolution | 0.5 µs | firmware, at ≥ 100 Hz |
-| Speed + acceleration in firmware | speed ramped by host / script only | firmware |
-| Settings, home positions, startup behaviour in flash | none — all channels boot off | firmware |
-| Error register, serial-timeout failsafe | latched rail faults only | firmware |
+| Speed + acceleration in firmware | **supported** through the Maestro protocol | parity |
+| Settings, home positions, startup behaviour in flash | limits and speed/accel stored; no home positions, all channels boot off | firmware |
+| Error register, serial-timeout failsafe | protocol-error bit only; no serial timeout | firmware |
 | 8 KB script language | 254-instruction motion script | simpler |
 | Maestro Control Center | own GUI (`servogui.py`) | Pololu VID-locked |
 | 28 × 36 mm | 66 × 38 mm | — |
@@ -273,15 +280,17 @@ the CDC port and speaks the Pololu/Compact/Mini SSC byte protocols **without
 checking USB IDs**. **Configuration** (Control Center, `UscCmd`) uses control
 transfers bound to Pololu's VID `0x1FFB` and can never work here.
 
-So implementing the serial protocols makes this board a drop-in for all of
-those libraries, and no open-source Maestro-compatible firmware exists yet. The
-framings don't collide with the ASCII protocol, so one dispatch on the first
-byte serves all of them: `0xAA` Pololu, `0xFF` Mini SSC, `0x80–0xFE` Compact,
-printable ASCII the existing protocol. Targets are in quarter-µs (1500 µs =
-`6000`), and `0` means channel off.
+Firmware 0.4 implements those serial protocols, so the runtime libraries work
+unchanged: verified on hardware with an unmodified FRC4564 `maestro.py`
+(targets, speed, acceleration, position, moving state). One dispatch on the
+first byte serves everything: `0xAA` Pololu, `0xFF` Mini SSC, `0x80–0xFE`
+Compact, printable ASCII the existing protocol.
 
-Suggested order: serial protocols → wider pulse range and configurable rate →
-speed/acceleration → error register and failsafe → settings persistence.
+Still different from a Maestro: 0.5 µs output steps (0.25 µs needs ≥ 100 Hz
+frames), a fixed 50 Hz rate, no home positions, CRC or serial timeout.
+Per-channel travel limits (64–4080 µs) and start-up speed/acceleration are
+stored on the board with `W` — the GUI's gear button sets the limits. Next steps: configurable frame rate →
+serial-timeout failsafe → home positions.
 
 ---
 

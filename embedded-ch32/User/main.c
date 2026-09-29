@@ -15,6 +15,8 @@
 #include "sense.h"
 #include "protocol.h"
 #include "script.h"
+#include "maestro.h"
+#include "settings.h"
 
 /* Status LED D3: PC13 -> R13 -> anode, cathode to GND, so on = pin high.
    One pattern at a time, highest priority first; t is main-loop ticks (~1 ms).
@@ -67,6 +69,9 @@ int main(void)
        disabled (idle low) until the host commands a position. */
     Servo_Init();
 
+    /* Stored travel limits and Maestro speed/accel, before anything moves. */
+    Settings_Init();
+
     /* ADC1 plus the two rail-sense pins (PA4 V_SENSE, PA5 I_SENSE). Must come
        after Servo_Init() so nothing is driving a servo pin while the ADC
        calibrates, and before the main loop starts monitoring. */
@@ -92,6 +97,9 @@ int main(void)
 
         /* Stored script: ramps and instructions, timed off TIM2. */
         Script_Task();
+
+        /* Maestro protocol moves: speed and acceleration ramps, 10 ms steps. */
+        Maestro_Task();
 
         /* A BOOT command hands the chip to the factory USB bootloader. The
            jump happens here, out of interrupt context, after the reply is sent. */
