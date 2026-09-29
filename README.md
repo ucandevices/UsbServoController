@@ -341,3 +341,14 @@ inherent header courtyard overlaps (three rows on a 2.54 mm grid), 0 unconnected
 
 Re-run the checks with `kicad-cli sch erc usbservocontroller.kicad_sch` and
 `kicad-cli pcb drc --schematic-parity usbservocontroller.kicad_pcb`.
+
+---
+
+## License
+
+[MIT](LICENSE) — hardware design files, firmware and host tools.
+
+Files carrying a WCH (Nanjing Qinheng Microelectronics) copyright header — the
+`ch32v20x` HAL, USB library, startup code and the WCH-derived files in
+`embedded-ch32/User/` — remain under WCH's own terms, which limit their use to
+WCH microcontrollers.
