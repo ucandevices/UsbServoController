@@ -5,6 +5,12 @@
 
 > **12-channel USB-C servo controller, Pololu Maestro compatible, with an MCP server so AI agents (Claude, etc.) can drive servos. $18 on [Tindie](https://www.tindie.com/products/lll7/usb-servo-controller-12-channels-usb-c/) · [product page](https://ucandevices.github.io/servo.html).**
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=J-3VjcItKfA"><img src="https://img.youtube.com/vi/J-3VjcItKfA/maxresdefault.jpg" alt="Video: USB-C servo controller driving an MG995 servo" width="49%"></a>
+  <img src="https://ucandevices.github.io/servo/top.webp" alt="USB Servo Controller board, top view" width="49%">
+  <br><sub>▶ 2-minute video: wiring, current monitoring, GUI and the controller driving a real MG995</sub>
+</p>
+
 Open-source alternative to the [Pololu Mini Maestro 12](https://www.pololu.com/product/1352)
 that speaks the **Maestro serial protocols**, so Maestro libraries work unchanged —
 plus USB-C, servo-rail current and voltage sensing, on-board scripts. Built for JLCPCB
