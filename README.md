@@ -1,5 +1,10 @@
 # USB-C 12-Channel Servo Controller
 
+[![Buy on Tindie](https://img.shields.io/badge/Tindie-Buy_USB_Servo_Controller-fb5b1b?logo=tindie&logoColor=white)](https://www.tindie.com/products/lll7/usb-servo-controller-12-channels-usb-c/)
+[![Product page](https://img.shields.io/badge/docs-ucandevices.github.io-1f6feb)](https://ucandevices.github.io/servo.html)
+
+> **12-channel USB-C servo controller, Pololu Maestro compatible, with an MCP server so AI agents (Claude, etc.) can drive servos. $18 on [Tindie](https://www.tindie.com/products/lll7/usb-servo-controller-12-channels-usb-c/) · [product page](https://ucandevices.github.io/servo.html).**
+
 Open-source alternative to the [Pololu Mini Maestro 12](https://www.pololu.com/product/1352)
 that speaks the **Maestro serial protocols**, so Maestro libraries work unchanged —
 plus USB-C, servo-rail current and voltage sensing, on-board scripts. Built for JLCPCB
@@ -20,6 +25,36 @@ turnkey assembly, **≈ $4.43 per board at 100 units** against $29.95 for the Ma
 | [`USER.md`](USER.md) | using the board: wiring, power, tools, command reference, flashing |
 | [`tools/README.md`](tools/README.md) | host tools: library, CLI, GUI, scripts, MCP server, release builds |
 | this file | design: why each choice, BOM and cost, limitations, what is left before fab |
+
+---
+
+## AI agents (MCP server)
+
+[`tools/servo_mcp.py`](tools/servo_mcp.py) is an MCP server that lets an AI agent move servos,
+run poses and sequences, and read rail current/voltage, with guardrails: per-channel limits,
+ramped moves, overcurrent stop. `pip install -r tools/requirements.txt`, then:
+
+**Claude Code**
+
+```sh
+claude mcp add servo -- python /path/to/UsbServoController/tools/servo_mcp.py
+```
+
+**Claude Desktop** (`claude_desktop_config.json`)
+
+```json
+{
+  "mcpServers": {
+    "servo": {
+      "command": "python",
+      "args": ["/path/to/UsbServoController/tools/servo_mcp.py"]
+    }
+  }
+}
+```
+
+Add `"--port", "COM5"` to pick a port, or `"--mock"` to try it without hardware.
+Close the GUI first: only one program can hold the serial port.
 
 ---
 
