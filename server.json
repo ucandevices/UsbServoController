@@ -1,0 +1,39 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ucandevices/usb-servo-controller",
+  "title": "USB Servo Controller",
+  "description": "Drive 12 hobby servos on an open-hardware USB-C controller: moves, poses, sequences, rail current",
+  "version": "0.4.0",
+  "websiteUrl": "https://ucandevices.github.io/servo.html",
+  "repository": {
+    "url": "https://github.com/ucandevices/UsbServoController",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "ucan-servo-mcp",
+      "version": "0.4.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--port",
+          "description": "Serial port of the board, e.g. COM5 or /dev/ttyACM0. Auto-detected when omitted.",
+          "format": "string",
+          "isRequired": false
+        },
+        {
+          "type": "named",
+          "name": "--config",
+          "description": "Path to servogui.json from the GUI: channel names, travel limits, poses and sequences.",
+          "format": "filepath",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

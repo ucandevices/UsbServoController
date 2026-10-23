@@ -5,6 +5,7 @@ servo_mcp.py -- MCP server that lets an AI agent drive the servo controller.
     python servo_mcp.py                    # stdio transport, auto-detect board
     python servo_mcp.py --port COM52
     python servo_mcp.py --mock             # offline emulator
+    python servo_mcp.py --config servogui.json
 
 Register it with any MCP client as a stdio server, e.g. in its JSON config:
 
@@ -31,6 +32,7 @@ import argparse
 import atexit
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import serial
@@ -124,8 +126,11 @@ mcp = MCPServer(
 
 # --- helpers ---------------------------------------------------------------
 
+config_path = CONFIG_PATH
+
+
 def config() -> Config:
-    return Config.load(CONFIG_PATH)        # re-read: the GUI may have changed it
+    return Config.load(config_path)        # re-read: the GUI may have changed it
 
 
 def resolve(cfg: Config, key: Any) -> int:
@@ -434,12 +439,15 @@ def release_port() -> str:
 
 
 def main(argv=None) -> int:
-    global board
+    global board, config_path
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--port", help="serial port; default is auto-detect")
     p.add_argument("--mock", action="store_true", help="run against the emulator")
+    p.add_argument("--config", type=Path, default=CONFIG_PATH,
+                   help=f"GUI settings with limits, poses and sequences (default {CONFIG_PATH})")
     args = p.parse_args(argv)
+    config_path = args.config
 
     board = Board(args.port, args.mock)
     atexit.register(board.shutdown)

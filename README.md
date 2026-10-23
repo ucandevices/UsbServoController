@@ -62,6 +62,12 @@ claude mcp add servo -- python /path/to/UsbServoController/tools/servo_mcp.py
 Add `"--port", "COM5"` to pick a port, or `"--mock"` to try it without hardware.
 Close the GUI first: only one program can hold the serial port.
 
+The server is also on PyPI, so any MCP client can run it without cloning the repo:
+command `uvx`, args `["ucan-servo-mcp"]` (plus `--config path/to/servogui.json`
+to use the limits, poses and sequences saved by the GUI).
+
+<!-- mcp-name: io.github.ucandevices/usb-servo-controller -->
+
 ---
 
 ## 1. Quick start
