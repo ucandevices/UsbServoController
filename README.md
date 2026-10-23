@@ -66,7 +66,7 @@ The server is also on PyPI, so any MCP client can run it without cloning the rep
 command `uvx`, args `["ucan-servo-mcp"]` (plus `--config path/to/servogui.json`
 to use the limits, poses and sequences saved by the GUI).
 
-<!-- mcp-name: io.github.ucandevices/usb-servo-controller -->
+<!-- mcp-name: io.github.Lukasz-Juranek/usb-servo-controller -->
 
 ---
 

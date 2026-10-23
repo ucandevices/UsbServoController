@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ucan-servo-mcp"
-version = "0.4.0"
+version = "0.4.1"
 description = "MCP server for the open-hardware USB-C 12-channel servo controller (Pololu Maestro compatible)"
 readme = "README.md"
 license = "MIT"

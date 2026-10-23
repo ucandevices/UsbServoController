@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.ucandevices/usb-servo-controller",
+  "name": "io.github.Lukasz-Juranek/usb-servo-controller",
   "title": "USB Servo Controller",
   "description": "Drive 12 hobby servos on an open-hardware USB-C controller: moves, poses, sequences, rail current",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "websiteUrl": "https://ucandevices.github.io/servo.html",
   "repository": {
     "url": "https://github.com/ucandevices/UsbServoController",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "ucan-servo-mcp",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
